@@ -250,114 +250,89 @@ function textoWhatsApp(){
   `Spaciomar · El Tabo`;
 }
 
-async function guardarImagen(){
-  actualizarComprobante();
-  if(!window.html2canvas){
-    alert("Para guardar como imagen necesitas conexión a internet la primera vez.");
-    return;
+function wrapCanvasText(ctx,text,x,y,maxWidth,lineHeight){
+  const words=String(text).split(/\s+/); let line="";
+  for(const word of words){
+    const test=line?line+" "+word:word;
+    if(ctx.measureText(test).width>maxWidth && line){ ctx.fillText(line,x,y); y+=lineHeight; line=word; }
+    else line=test;
   }
-  const panel=document.querySelectorAll(".panel")[1];
-  const canvas=await html2canvas(panel,{scale:2,backgroundColor:"#ffffff"});
-  const a=document.createElement("a");
-  a.download=`Spaciomar_${numeroReserva().replace("#","")}.jpg`;
-  a.href=canvas.toDataURL("image/jpeg",0.94);
-  a.click();
+  if(line){ctx.fillText(line,x,y); y+=lineHeight;}
+  return y;
 }
 
+async function crearCanvasComprobante(){
+  actualizarComprobante();
+  const c=document.createElement("canvas"); c.width=900; c.height=1420;
+  const x=70, right=830; const ctx=c.getContext("2d");
+  ctx.fillStyle="#ffffff"; ctx.fillRect(0,0,c.width,c.height);
+  ctx.textBaseline="top"; ctx.fillStyle="#13375d"; ctx.textAlign="center";
+  const logo=document.querySelector(".receipt-logo img") || document.querySelector(".logo-top img");
+  if(logo && logo.complete){ try{ctx.drawImage(logo,350,35,200,200);}catch(e){} }
+  ctx.font="700 30px Arial"; ctx.fillText("SPACIOMAR · CABAÑAS · EL TABO",450,245);
+  ctx.font="800 44px Arial"; ctx.fillText("RESERVA CONFIRMADA",450,295);
+  ctx.font="700 26px Arial"; ctx.fillText("COMPROBANTE DE RESERVA",450,350);
+  ctx.strokeStyle="#0a4f86"; ctx.lineWidth=4; ctx.beginPath();ctx.moveTo(x,400);ctx.lineTo(right,400);ctx.stroke();
+  ctx.textAlign="left";
+  let y=435;
+  const row=(label,val)=>{ctx.font="700 27px Arial";ctx.fillStyle="#13375d";ctx.fillText(label,x,y);ctx.font="27px Arial";ctx.fillStyle="#111827";ctx.textAlign="right";ctx.fillText(val||"-",right,y);ctx.textAlign="left";y+=52;};
+  row("Reserva",$("r_reserva").textContent); row("Nombre del huésped",$("r_nombre").textContent); row("Cabaña",$("r_cabana").textContent); row("Personas",$("r_personas").textContent); row("Ingreso",$("r_ingreso").textContent); row("Salida",$("r_salida").textContent); row("Noches",$("r_noches").textContent);
+  y+=8; ctx.fillStyle="#e8f0f6";ctx.fillRect(x,y,right-x,62);ctx.fillStyle="#13375d";ctx.textAlign="center";ctx.font="800 34px Arial";ctx.fillText("PAGO",450,y+13);ctx.textAlign="left";y+=82;
+  row("Valor total",$("r_total").textContent); row("Abonado",$("r_abono").textContent); row("Saldo pendiente",$("r_saldo").textContent);
+  y+=8;ctx.strokeStyle="#0a4f86";ctx.lineWidth=4;ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(right,y);ctx.stroke();y+=28;
+  ctx.fillStyle="#13375d";ctx.font="800 31px Arial";ctx.fillText("Horarios y condiciones",x,y);y+=50;
+  ctx.font="25px Arial";ctx.fillStyle="#111827";
+  const cond=["• Check-in 15:00 horas. Check-out 12:00 horas.","• Mascotas previa autorización/pago adicional (se debe informar).","• 1 estacionamiento por cabaña.","• Servicio de tinaja es adicional y según disponibilidad."];
+  for(const t of cond){y=wrapCanvasText(ctx,t,x,y,760,36)+8;}
+  y+=12;ctx.textAlign="center";ctx.font="700 27px Arial";ctx.fillStyle="#13375d";ctx.fillText("Instagram @spaciomar",450,y);y+=42;ctx.fillText("WhatsApp +56 9 9294 5835",450,y);y+=52;
+  ctx.font="24px Arial";ctx.fillStyle="#374151";ctx.fillText("Dr. Carlos Monckeberg 516 · El Tabo",450,y);y+=55;
+  ctx.fillStyle="#fee2e2";ctx.fillRect(x,y,right-x,70);ctx.fillStyle="#991b1b";ctx.font="800 28px Arial";ctx.fillText("La reserva no es reembolsable.",450,y+19);
+  return c;
+}
 
+function descargarBlob(blob,nombre){const u=URL.createObjectURL(blob);const a=document.createElement("a");a.href=u;a.download=nombre;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(u),2000);}
 
 async function crearJpgFile(){
-  actualizarComprobante();
-  if(!window.html2canvas) throw new Error("html2canvas no disponible");
-  const panel=document.querySelectorAll(".panel")[1];
-  const canvas=await html2canvas(panel,{scale:2,backgroundColor:"#ffffff"});
-  const blob=await new Promise(res=>canvas.toBlob(res,"image/jpeg",0.94));
+  const canvas=await crearCanvasComprobante();
+  const blob=await new Promise((res,rej)=>canvas.toBlob(b=>b?res(b):rej(new Error("JPG")),"image/jpeg",0.94));
   return new File([blob],`Spaciomar_${numeroReserva().replace("#","")}.jpg`,{type:"image/jpeg"});
 }
 
+function bytes(str){return new TextEncoder().encode(str);}
+function unir(partes){let n=partes.reduce((a,b)=>a+b.length,0),o=new Uint8Array(n),p=0;for(const b of partes){o.set(b,p);p+=b.length;}return o;}
+async function jpegAPdf(jpegBlob,wpx,hpx){
+  const jpg=new Uint8Array(await jpegBlob.arrayBuffer()); const partes=[]; const offs=[0]; let pos=0;
+  const add=b=>{partes.push(b);pos+=b.length;}; const obj=(n,contenido)=>{offs[n]=pos;add(bytes(`${n} 0 obj\n${contenido}\nendobj\n`));};
+  add(bytes("%PDF-1.4\n%âãÏÓ\n"));
+  obj(1,"<< /Type /Catalog /Pages 2 0 R >>"); obj(2,"<< /Type /Pages /Kids [3 0 R] /Count 1 >>");
+  obj(3,"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595.28 841.89] /Resources << /XObject << /Im0 5 0 R >> >> /Contents 4 0 R >>");
+  const scale=Math.min(535.28/wpx,781.89/hpx), pw=wpx*scale, ph=hpx*scale, px=(595.28-pw)/2, py=(841.89-ph)/2;
+  const stream=`q\n${pw.toFixed(2)} 0 0 ${ph.toFixed(2)} ${px.toFixed(2)} ${py.toFixed(2)} cm\n/Im0 Do\nQ\n`;
+  obj(4,`<< /Length ${bytes(stream).length} >>\nstream\n${stream}endstream`);
+  offs[5]=pos; add(bytes(`5 0 obj\n<< /Type /XObject /Subtype /Image /Width ${wpx} /Height ${hpx} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${jpg.length} >>\nstream\n`)); add(jpg); add(bytes("\nendstream\nendobj\n"));
+  const xref=pos; add(bytes("xref\n0 6\n0000000000 65535 f \n")); for(let i=1;i<=5;i++) add(bytes(String(offs[i]).padStart(10,"0")+" 00000 n \n")); add(bytes(`trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`));
+  return new Blob([unir(partes)],{type:"application/pdf"});
+}
+
 async function crearPdfFile(){
-  actualizarComprobante();
-  if(!window.html2canvas || !window.jspdf) throw new Error("PDF no disponible");
-  const panel=document.querySelectorAll(".panel")[1];
-  const canvas=await html2canvas(panel,{scale:2,backgroundColor:"#ffffff"});
-  const img=canvas.toDataURL("image/jpeg",0.94);
-  const { jsPDF }=window.jspdf;
-  const pdf=new jsPDF({orientation:"portrait",unit:"mm",format:"a4"});
-  const pageW=210, pageH=297;
-  const ratio=Math.min(pageW/canvas.width,pageH/canvas.height);
-  const w=canvas.width*ratio, h=canvas.height*ratio;
-  pdf.addImage(img,"JPEG",(pageW-w)/2,(pageH-h)/2,w,h);
-  const blob=pdf.output("blob");
+  const canvas=await crearCanvasComprobante();
+  const jpg=await new Promise((res,rej)=>canvas.toBlob(b=>b?res(b):rej(new Error("PDF")),"image/jpeg",0.94));
+  const blob=await jpegAPdf(jpg,canvas.width,canvas.height);
   return new File([blob],`Spaciomar_${numeroReserva().replace("#","")}.pdf`,{type:"application/pdf"});
 }
 
 async function compartirArchivo(file){
-  if(navigator.canShare && navigator.canShare({files:[file]})){
-    try{
-      await navigator.share({
-        title:"Comprobante Spaciomar",
-        text:"Comprobante de reserva Spaciomar",
-        files:[file]
-      });
-      return;
-    }catch(e){
-      if(e.name==="AbortError") return;
-    }
-  }
-  // Fallback: download file and open WhatsApp text.
-  const a=document.createElement("a");
-  a.href=URL.createObjectURL(file);
-  a.download=file.name;
-  a.click();
-  setTimeout(()=>URL.revokeObjectURL(a.href),1500);
-  alert("El archivo se guardó en tu teléfono. Ahora adjúntalo en WhatsApp.");
-  window.open("https://wa.me/?text="+encodeURIComponent(textoWhatsApp()),"_blank");
+  if(navigator.canShare && navigator.canShare({files:[file]})){try{await navigator.share({title:"Comprobante Spaciomar",text:"Comprobante de reserva Spaciomar",files:[file]});return;}catch(e){if(e.name==="AbortError")return;}}
+  descargarBlob(file,file.name); alert("El archivo se guardó en tu teléfono. Ahora puedes adjuntarlo en WhatsApp.");
 }
-
-async function compartirJpg(){
-  try{
-    const f=await crearJpgFile();
-    await compartirArchivo(f);
-  }catch(e){
-    alert("No se pudo crear el JPG. Revisa tu conexión e inténtalo nuevamente.");
-  }
-}
-
-async function compartirPdf(){
-  try{
-    const f=await crearPdfFile();
-    await compartirArchivo(f);
-  }catch(e){
-    alert("No se pudo crear el PDF. Revisa tu conexión e inténtalo nuevamente.");
-  }
-}
-
-async function guardarPDF(){
-  actualizarComprobante();
-  if(!window.html2canvas || !window.jspdf){
-    alert("Para guardar PDF necesitas conexión a internet la primera vez.");
-    return;
-  }
-  const panel=document.querySelectorAll(".panel")[1];
-  const canvas=await html2canvas(panel,{scale:2,backgroundColor:"#ffffff"});
-  const img=canvas.toDataURL("image/png");
-  const { jsPDF }=window.jspdf;
-  const pdf=new jsPDF({orientation:"portrait",unit:"mm",format:"a4"});
-  const pageW=210, pageH=297;
-  const ratio=Math.min(pageW/canvas.width,pageH/canvas.height);
-  const w=canvas.width*ratio, h=canvas.height*ratio;
-  const x=(pageW-w)/2, y=(pageH-h)/2;
-  pdf.addImage(img,"PNG",x,y,w,h);
-  pdf.save(`Spaciomar_${numeroReserva().replace("#","")}.pdf`);
-}
+async function compartirJpg(){try{await compartirArchivo(await crearJpgFile());}catch(e){alert("No se pudo crear el JPG.");}}
+async function compartirPdf(){try{await compartirArchivo(await crearPdfFile());}catch(e){alert("No se pudo crear el PDF.");}}
+async function guardarImagen(){try{const f=await crearJpgFile();descargarBlob(f,f.name);}catch(e){alert("No se pudo crear el JPG.");}}
+async function guardarPDF(){try{const f=await crearPdfFile();descargarBlob(f,f.name);}catch(e){alert("No se pudo crear el PDF.");}}
 
 $("generar").addEventListener("click",actualizarComprobante);
 $("compartirJpg").addEventListener("click",compartirJpg);
 $("compartirPdf").addEventListener("click",compartirPdf);
-$("compartir").addEventListener("click",()=>{
-  actualizarComprobante();
-  window.open("https://wa.me/?text="+encodeURIComponent(textoWhatsApp()),"_blank");
-});
 $("guardar").addEventListener("click",guardarImagen);
 $("guardarPdf").addEventListener("click",guardarPDF);
 
@@ -365,13 +340,6 @@ ids.forEach(id=>{
   $(id).addEventListener("input",()=>{calcular();guardarBorrador();});
   $(id).addEventListener("change",()=>{calcular();guardarBorrador();});
 });
-
-const script=document.createElement("script");
-script.src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js";
-document.head.appendChild(script);
-const scriptPdf=document.createElement("script");
-scriptPdf.src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js";
-document.head.appendChild(scriptPdf);
 
 cargarBorrador();
 actualizarComprobante();
