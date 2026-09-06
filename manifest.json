@@ -1,0 +1,15 @@
+{
+  "name": "Spaciomar Reservas",
+  "short_name": "Spaciomar",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#f7fbfe",
+  "theme_color": "#0a4f86",
+  "icons": [
+    {
+      "src": "logo-spaciomar.png",
+      "sizes": "700x700",
+      "type": "image/png"
+    }
+  ]
+}
